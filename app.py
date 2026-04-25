@@ -30,9 +30,9 @@ class User(db.Model):
     email = db.Column(db.String(100))
 
     # Relationships to profiles
-    student_info = db.relationship('Student', backref='user', uselist=False, cascade="all, delete-orphan")
     parent_info = db.relationship('Parent', backref='user', uselist=False, cascade="all, delete-orphan")
     driver_info = db.relationship('Driver', backref='user', uselist=False, cascade="all, delete-orphan")
+    admin_info = db.relationship('AdminProfile', backref='user', uselist=False, cascade="all, delete-orphan")
 
     def to_dict(self):
         data = {
@@ -43,48 +43,52 @@ class User(db.Model):
         }
         
         # Merge profile details based on role
-        if self.role == 'student' and self.student_info:
-            data.update({
-                "full_name": self.student_info.full_name,
-                "assigned_bus": self.student_info.assigned_bus,
-                "assigned_stop": self.student_info.assigned_stop
-            })
+        if self.role == 'student':
+            student = Student.query.filter_by(username=self.username).first()
+            if student:
+                data.update({
+                    "required_stop": student.required_stop
+                })
         elif self.role == 'parent' and self.parent_info:
             data.update({
-                "full_name": self.parent_info.full_name,
                 "student_name": self.parent_info.student_name
             })
         elif self.role == 'driver' and self.driver_info:
             data.update({
-                "full_name": self.driver_info.full_name,
                 "assigned_bus": self.driver_info.assigned_bus
             })
         elif self.role == 'admin':
-            data.update({"full_name": "Principal"})
+            data.update({"username": self.username})
+            if self.admin_info:
+                data.update({
+                    "department": self.admin_info.department
+                })
             
         return data
 
 class Student(db.Model):
     __tablename__ = 'student'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    full_name = db.Column(db.String(100), nullable=False)
-    assigned_bus = db.Column(db.String(10))
-    assigned_stop = db.Column(db.String(100))
+    username = db.Column(db.String(50), nullable=False)
+    required_stop = db.Column(db.String(100))
 
 class Parent(db.Model):
     __tablename__ = 'parent'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    full_name = db.Column(db.String(100), nullable=False)
     student_name = db.Column(db.String(100))
 
 class Driver(db.Model):
     __tablename__ = 'driver'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    full_name = db.Column(db.String(100), nullable=False)
     assigned_bus = db.Column(db.String(10))
+
+class AdminProfile(db.Model):
+    __tablename__ = 'admin_profile'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    department = db.Column(db.String(100), default="Management")
 
 class Bus(db.Model):
     __tablename__ = 'bus'
@@ -189,9 +193,6 @@ def signup():
     username = data.get('username')
     role = data.get('role')
     
-    # ✅ Auto-populate full_name with username if missing
-    full_nm = data.get('full_name', username)
-
     # ✅ BLOCK ADMIN SIGNUP
     if role == 'admin':
         return jsonify({"success": False, "message": "Administrator registration is disabled"}), 403
@@ -205,13 +206,13 @@ def signup():
         db.session.flush()
 
         if role == 'student':
-            profile = Student(user_id=new_user.id, full_name=full_nm, assigned_bus=data.get('assigned_bus'), assigned_stop=data.get('assigned_stop'))
+            profile = Student(username=username, required_stop=data.get('assigned_stop'))
             db.session.add(profile)
         elif role == 'parent':
-            profile = Parent(user_id=new_user.id, full_name=full_nm, student_name=data.get('student_name'))
+            profile = Parent(user_id=new_user.id, student_name=data.get('student_name'))
             db.session.add(profile)
         elif role == 'driver':
-            profile = Driver(user_id=new_user.id, full_name=full_nm, assigned_bus=data.get('assigned_bus'))
+            profile = Driver(user_id=new_user.id, assigned_bus=data.get('assigned_bus'))
             db.session.add(profile)
 
         db.session.commit()
@@ -263,36 +264,38 @@ def add_bus():
             bus = Bus(id=bus_id, name=f"Bus {bus_id}", route_from=route_from, route_to=route_to, route_name=route_name, driver_name=driver_name)
         bus.driver_name = driver_name
         
-        # 2. Update Stops
-        Stop.query.filter_by(bus_id=bus_id).delete()
-        stops_list = data.get('stops', [])
-        for stop_name in stops_list:
-            if stop_name.strip():
-                new_stop = Stop(name=stop_name, bus=bus)
-                db.session.add(new_stop)
-        
-        # 3. Create or Update Driver User
+        # 2. Create or Update Driver User
+        driver_user = None
         if driver_name:
-            # Check if this name is already taken by a non-driver
             existing_user = User.query.filter_by(username=driver_name).first()
             if existing_user and existing_user.role != 'driver':
                 return jsonify({"success": False, "message": "Driver name conflicts with existing non-driver account"}), 400
                 
             driver_user = existing_user
             if not driver_user:
-                driver_user = User(username=driver_name, role='driver', approved=True)
+                # Set automated password during creation to satisfy not-null constraint
+                temp_pass = f"bus{bus_id}driver"
+                driver_user = User(username=driver_name, password=temp_pass, role='driver', approved=True)
                 db.session.add(driver_user)
                 db.session.flush()
             
-            driver_user.password = f"bus{bus_id}driver" # Automated password
+            driver_user.password = f"bus{bus_id}driver"
             
             # Update Driver Profile
             profile = driver_user.driver_info
             if not profile:
-                profile = Driver(user_id=driver_user.id, full_name=driver_name)
+                profile = Driver(user_id=driver_user.id)
                 db.session.add(profile)
-                db.session.flush() # Ensure ID is assigned
+                db.session.flush()
             profile.assigned_bus = bus_id
+
+        # 3. Update Stops
+        Stop.query.filter_by(bus_id=bus_id).delete()
+        stops_list = data.get('stops', [])
+        for stop_name in stops_list:
+            if stop_name.strip():
+                new_stop = Stop(name=stop_name, bus=bus)
+                db.session.add(new_stop)
 
         db.session.add(bus)
         db.session.commit()
@@ -342,15 +345,11 @@ def get_bus(bus_id):
 @app.route('/api/students', methods=['GET'])
 def get_all_students():
     students = Student.query.all()
-    return jsonify([{"full_name": s.full_name, "assigned_stop": s.assigned_stop, "assigned_bus": s.assigned_bus} for s in students])
+    return jsonify([{"username": s.username, "required_stop": s.required_stop} for s in students])
 
 @app.route('/api/bus/<bus_id>/students', methods=['GET'])
 def get_bus_students(bus_id):
-    try:
-        students = Student.query.filter_by(assigned_bus=str(bus_id)).all()
-        return jsonify([{"full_name": s.full_name, "assigned_stop": s.assigned_stop} for s in students])
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+    return jsonify([])
 
 if __name__ == '__main__':
     with app.app_context():
