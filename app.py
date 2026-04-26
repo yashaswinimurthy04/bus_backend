@@ -47,7 +47,8 @@ class User(db.Model):
             student = Student.query.filter_by(username=self.username).first()
             if student:
                 data.update({
-                    "required_stop": student.required_stop
+                    "assigned_stop": student.required_stop,
+                    "parent_name": student.parent_name
                 })
         elif self.role == 'parent' and self.parent_info:
             data.update({
@@ -71,11 +72,13 @@ class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), nullable=False)
     required_stop = db.Column(db.String(100))
+    parent_name = db.Column(db.String(100))
 
 class Parent(db.Model):
     __tablename__ = 'parent'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    full_name = db.Column(db.String(100))
     student_name = db.Column(db.String(100))
 
 class Driver(db.Model):
@@ -101,8 +104,8 @@ class Bus(db.Model):
     next_stop = db.Column(db.String(100))
     eta = db.Column(db.String(20))
     speed = db.Column(db.Float, default=0.0)
-    lat = db.Column(db.Float, default=12.2958) 
-    lng = db.Column(db.Float, default=76.6394)
+    lat = db.Column(db.Float, default=12.3382) 
+    lng = db.Column(db.Float, default=76.6261)
     driver_name = db.Column(db.String(100))
     status = db.Column(db.String(20), default="Stopped")
     capacity = db.Column(db.Integer, default=50)
@@ -206,10 +209,25 @@ def signup():
         db.session.flush()
 
         if role == 'student':
-            profile = Student(username=username, required_stop=data.get('assigned_stop'))
+            profile = Student(
+                username=username, 
+                required_stop=data.get('assigned_stop'), 
+                parent_name=data.get('parent_name')
+            )
             db.session.add(profile)
         elif role == 'parent':
-            profile = Parent(user_id=new_user.id, student_name=data.get('student_name'))
+            # Validation: Check if there's a student with matching names
+            parent_full_name = data.get('full_name')
+            target_student_name = data.get('student_name')
+            
+            # Look for a student whose username matches student_name AND parent_name matches full_name
+            student_exists = Student.query.filter_by(username=target_student_name, parent_name=parent_full_name).first()
+            
+            if not student_exists:
+                db.session.rollback()
+                return jsonify({"success": False, "message": "Wrong credentials: No matching student record found for these names"}), 401
+                
+            profile = Parent(user_id=new_user.id, full_name=parent_full_name, student_name=target_student_name)
             db.session.add(profile)
         elif role == 'driver':
             profile = Driver(user_id=new_user.id, assigned_bus=data.get('assigned_bus'))

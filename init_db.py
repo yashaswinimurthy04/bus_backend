@@ -19,17 +19,17 @@ def seed_db():
         db.session.flush()
 
         # Add stops for Bus 1
-        s1 = Stop(name='Main Gate', bus=b1, pickup_time='8:30 AM')
-        s2 = Stop(name='Stop 2', bus=b1, pickup_time='8:45 AM')
-        s3 = Stop(name='Stop 3', bus=b1, pickup_time='8:55 AM')
-        s4 = Stop(name='Campus Hub', bus=b1, pickup_time='9:05 AM')
+        s1 = Stop(name='GSSS Simha Subbamahalakshmi First Grade College - ssfgc Mysuru', bus=b1, pickup_time='8:00 AM')
+        s2 = Stop(name='Metagalli', bus=b1, pickup_time='8:15 AM')
+        s3 = Stop(name='KRS Road', bus=b1, pickup_time='8:30 AM')
+        s4 = Stop(name='Main Gate', bus=b1, pickup_time='8:45 AM')
         db.session.add_all([s1, s2, s3, s4])
 
         # 3. Add Sample Student
         u_student = User(username='student', password='123', role='student', approved=True, email='student@college.edu', phone='9876543210')
         db.session.add(u_student)
         db.session.flush()
-        sp = Student(username='student', required_stop='Campus Hub')
+        sp = Student(username='student', required_stop='Campus Hub', parent_name='Parent User')
         db.session.add(sp)
 
         # 4. Add Sample Parent
