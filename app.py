@@ -408,7 +408,12 @@ def get_all_students():
 
 @app.route('/api/bus/<bus_id>/students', methods=['GET'])
 def get_bus_students(bus_id):
-    return jsonify([])
+    students = Student.query.filter_by(assigned_bus_id=bus_id).all()
+    return jsonify([{
+        "username": s.username, 
+        "required_stop": s.required_stop,
+        "is_absent": s.is_absent
+    } for s in students])
 
 @app.route('/api/student/attendance', methods=['POST'])
 def toggle_attendance():
