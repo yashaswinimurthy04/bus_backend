@@ -48,12 +48,21 @@ class User(db.Model):
             if student:
                 data.update({
                     "assigned_stop": student.required_stop,
-                    "parent_name": student.parent_name
+                    "parent_name": student.parent_name,
+                    "is_absent": student.is_absent
                 })
         elif self.role == 'parent' and self.parent_info:
+            student_name = self.parent_info.student_name
             data.update({
-                "student_name": self.parent_info.student_name
+                "student_name": student_name
             })
+            # Fetch student's current status for the parent dashboard
+            student = Student.query.filter_by(username=student_name).first()
+            if student:
+                data.update({
+                    "is_absent": student.is_absent,
+                    "assigned_stop": student.required_stop
+                })
         elif self.role == 'driver' and self.driver_info:
             data.update({
                 "assigned_bus": self.driver_info.assigned_bus
@@ -73,12 +82,12 @@ class Student(db.Model):
     username = db.Column(db.String(50), nullable=False)
     required_stop = db.Column(db.String(100))
     parent_name = db.Column(db.String(100))
+    is_absent = db.Column(db.Boolean, default=False)
 
 class Parent(db.Model):
     __tablename__ = 'parent'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    full_name = db.Column(db.String(100))
     student_name = db.Column(db.String(100))
 
 class Driver(db.Model):
@@ -217,17 +226,17 @@ def signup():
             db.session.add(profile)
         elif role == 'parent':
             # Validation: Check if there's a student with matching names
-            parent_full_name = data.get('full_name')
+            parent_username = username
             target_student_name = data.get('student_name')
             
-            # Look for a student whose username matches student_name AND parent_name matches full_name
-            student_exists = Student.query.filter_by(username=target_student_name, parent_name=parent_full_name).first()
+            # Look for a student whose username matches student_name AND parent_name matches parent_username
+            student_exists = Student.query.filter_by(username=target_student_name, parent_name=parent_username).first()
             
             if not student_exists:
                 db.session.rollback()
                 return jsonify({"success": False, "message": "Wrong credentials: No matching student record found for these names"}), 401
                 
-            profile = Parent(user_id=new_user.id, full_name=parent_full_name, student_name=target_student_name)
+            profile = Parent(user_id=new_user.id, student_name=target_student_name)
             db.session.add(profile)
         elif role == 'driver':
             profile = Driver(user_id=new_user.id, assigned_bus=data.get('assigned_bus'))
@@ -368,6 +377,17 @@ def get_all_students():
 @app.route('/api/bus/<bus_id>/students', methods=['GET'])
 def get_bus_students(bus_id):
     return jsonify([])
+
+@app.route('/api/student/attendance', methods=['POST'])
+def toggle_attendance():
+    data = request.json
+    username = data.get('username')
+    student = Student.query.filter_by(username=username).first()
+    if student:
+        student.is_absent = data.get('is_absent', False)
+        db.session.commit()
+        return jsonify({"success": True, "is_absent": student.is_absent})
+    return jsonify({"success": False, "message": "Student not found"}), 404
 
 if __name__ == '__main__':
     with app.app_context():

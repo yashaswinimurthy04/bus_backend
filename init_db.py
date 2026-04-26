@@ -7,6 +7,7 @@ load_dotenv()
 
 def seed_db():
     with app.app_context():
+        print(f"DEBUG: Using database at {app.config['SQLALCHEMY_DATABASE_URI']}")
         # 1. Clear existing
         db.drop_all()
         db.create_all()
@@ -29,7 +30,7 @@ def seed_db():
         u_student = User(username='student', password='123', role='student', approved=True, email='student@college.edu', phone='9876543210')
         db.session.add(u_student)
         db.session.flush()
-        sp = Student(username='student', required_stop='Campus Hub', parent_name='Parent User')
+        sp = Student(username='student', required_stop='Campus Hub', parent_name='Parent User', is_absent=False)
         db.session.add(sp)
 
         # 4. Add Sample Parent
