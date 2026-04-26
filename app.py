@@ -49,6 +49,7 @@ class User(db.Model):
                 data.update({
                     "assigned_stop": student.required_stop,
                     "parent_name": student.parent_name,
+                    "assigned_bus": student.assigned_bus_id,
                     "is_absent": student.is_absent
                 })
         elif self.role == 'parent' and self.parent_info:
@@ -61,7 +62,8 @@ class User(db.Model):
             if student:
                 data.update({
                     "is_absent": student.is_absent,
-                    "assigned_stop": student.required_stop
+                    "assigned_stop": student.required_stop,
+                    "assigned_bus": student.assigned_bus_id
                 })
         elif self.role == 'driver' and self.driver_info:
             data.update({
@@ -82,6 +84,7 @@ class Student(db.Model):
     username = db.Column(db.String(50), nullable=False)
     required_stop = db.Column(db.String(100))
     parent_name = db.Column(db.String(100))
+    assigned_bus_id = db.Column(db.String(10))
     is_absent = db.Column(db.Boolean, default=False)
 
 class Parent(db.Model):
@@ -139,13 +142,15 @@ class Bus(db.Model):
             "status": self.status,
             "capacity": self.capacity,
             "occupancy": self.occupancy,
-            "stops": [s.name for s in self.stops]
+            "stops": [{"name": s.name, "lat": s.lat, "lng": s.lng, "time": s.pickup_time} for s in self.stops]
         }
 
 class Stop(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     pickup_time = db.Column(db.String(20)) # Added for bus timing detail
+    lat = db.Column(db.Float)
+    lng = db.Column(db.Float)
     bus_id = db.Column(db.String(10), db.ForeignKey('bus.id'), nullable=False)
 
 class Notification(db.Model):
@@ -218,10 +223,25 @@ def signup():
         db.session.flush()
 
         if role == 'student':
+            assigned_stop = data.get('assigned_stop')
+            # Robust matching: Strip whitespace and case-insensitive
+            stop_match = None
+            if assigned_stop:
+                clean_stop = assigned_stop.strip().lower()
+                # Use a custom query for partial/case-insensitive match
+                # First try exact match (ignoring case)
+                stop_match = Stop.query.filter(db.func.lower(Stop.name) == clean_stop).first()
+                # If no exact match, try partial match
+                if not stop_match:
+                    stop_match = Stop.query.filter(Stop.name.ilike(f"%{clean_stop}%")).first()
+            
+            bus_id = stop_match.bus_id if stop_match else None
+            
             profile = Student(
                 username=username, 
-                required_stop=data.get('assigned_stop'), 
-                parent_name=data.get('parent_name')
+                required_stop=assigned_stop, 
+                parent_name=data.get('parent_name'),
+                assigned_bus_id=bus_id
             )
             db.session.add(profile)
         elif role == 'parent':
@@ -286,10 +306,15 @@ def add_bus():
         route_to = data.get('route_to')
         route_name = f"{route_from} → {route_to}"
         
+        # 1. Create or update Bus
         bus = Bus.query.get(bus_id)
         if not bus:
             bus = Bus(id=bus_id, name=f"Bus {bus_id}", route_from=route_from, route_to=route_to, route_name=route_name, driver_name=driver_name)
-        bus.driver_name = driver_name
+        else:
+            bus.route_from = route_from
+            bus.route_to = route_to
+            bus.route_name = route_name
+            bus.driver_name = driver_name
         
         # 2. Create or Update Driver User
         driver_user = None
@@ -315,13 +340,20 @@ def add_bus():
                 db.session.add(profile)
                 db.session.flush()
             profile.assigned_bus = bus_id
-
+        
         # 3. Update Stops
         Stop.query.filter_by(bus_id=bus_id).delete()
-        stops_list = data.get('stops', [])
-        for stop_name in stops_list:
-            if stop_name.strip():
-                new_stop = Stop(name=stop_name, bus=bus)
+        stops_data = data.get('stops', [])
+        for s in stops_data:
+            name = s.get('name')
+            if name and name.strip():
+                new_stop = Stop(
+                    name=name, 
+                    lat=s.get('lat'), 
+                    lng=s.get('lng'), 
+                    pickup_time=s.get('time', ''), 
+                    bus=bus
+                )
                 db.session.add(new_stop)
 
         db.session.add(bus)

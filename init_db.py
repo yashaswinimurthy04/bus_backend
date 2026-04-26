@@ -20,10 +20,10 @@ def seed_db():
         db.session.flush()
 
         # Add stops for Bus 1
-        s1 = Stop(name='GSSS Simha Subbamahalakshmi First Grade College - ssfgc Mysuru', bus=b1, pickup_time='8:00 AM')
-        s2 = Stop(name='Metagalli', bus=b1, pickup_time='8:15 AM')
-        s3 = Stop(name='KRS Road', bus=b1, pickup_time='8:30 AM')
-        s4 = Stop(name='Main Gate', bus=b1, pickup_time='8:45 AM')
+        s1 = Stop(name='GSSS Simha Subbamahalakshmi First Grade College - ssfgc Mysuru', bus=b1, pickup_time='8:00 AM', lat=12.3382, lng=76.6261)
+        s2 = Stop(name='Metagalli', bus=b1, pickup_time='8:15 AM', lat=12.3350, lng=76.6300)
+        s3 = Stop(name='KRS Road', bus=b1, pickup_time='8:30 AM', lat=12.3300, lng=76.6350)
+        s4 = Stop(name='Main Gate', bus=b1, pickup_time='8:45 AM', lat=12.3200, lng=76.6450)
         db.session.add_all([s1, s2, s3, s4])
 
         # 3. Add Sample Student
