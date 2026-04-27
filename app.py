@@ -133,6 +133,7 @@ class Bus(db.Model):
             "route_from": self.route_from,
             "route_to": self.route_to,
             "route_name": self.route_name or f"{self.route_from} → {self.route_to}",
+            "driver_name": self.driver_name,
             "current_stop": self.current_stop,
             "next_stop": self.next_stop,
             "eta": self.eta,
