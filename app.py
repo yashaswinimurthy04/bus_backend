@@ -404,7 +404,17 @@ def get_bus(bus_id):
 @app.route('/api/students', methods=['GET'])
 def get_all_students():
     students = Student.query.all()
-    return jsonify([{"username": s.username, "required_stop": s.required_stop} for s in students])
+    res = []
+    for s in students:
+        user = User.query.filter_by(username=s.username, role='student').first()
+        res.append({
+            "username": s.username, 
+            "required_stop": s.required_stop,
+            "assigned_bus": s.assigned_bus_id,
+            "is_absent": s.is_absent,
+            "phone": user.phone if user else "No phone"
+        })
+    return jsonify(res)
 
 @app.route('/api/bus/<bus_id>/students', methods=['GET'])
 def get_bus_students(bus_id):
